@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torchvision.transforms import transforms
 
 from einops import rearrange
 
@@ -20,6 +21,10 @@ class LiveCellDataset(Dataset):
         self.coco = COCO(f"../data/ann/livecell_coco_{split}.json")
         self.img_ids = self.coco.getImgIds()
         self.patch_size = patch_size
+
+        self.transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
 
     def __len__(self) -> int:
         return len(self.img_ids)
@@ -114,6 +119,11 @@ class LiveCellDataset(Dataset):
 
             img = rearrange(img, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=self.patch_size[0], p2=self.patch_size[1])
             mask = rearrange(mask, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=self.patch_size[0], p2=self.patch_size[1])
+
+            img = torch.from_numpy(img)
+            mask = torch.from_numpy(img)
+
+            img = self.transform(img)
 
         return img, mask
 
