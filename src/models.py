@@ -5,7 +5,7 @@ from torch import nn
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int, padding:int, activation:Optional[nn.Module]=nn.ReLU):
+    def __init__(self, in_channels:int, out_channels:int, kernel_size:int, stride:int, padding:int, activation:Optional[nn.Module]=nn.ReLU) -> None:
         super().__init__()
 
         self.in_channels = in_channels
@@ -68,7 +68,7 @@ class SegNetDecoder(nn.Module):
 
 
 class SegNet(nn.Module):
-    def __init__(self, in_channels, out_channels, channel_expansion, num_classes, num_blocks):
+    def __init__(self, in_channels:int, out_channels:int, channel_expansion:int, num_classes:int, num_blocks:int) -> None:
         super().__init__()
 
         encoder_layers = []
@@ -109,7 +109,7 @@ class SegNet(nn.Module):
 
         self.project = nn.Conv2d(in_channels=out_channels, out_channels=num_classes, kernel_size=1, stride=1, padding=0) # final 1x1 conv to project to desired num of classes
 
-    def forward(self, x:torch.Tensor):
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
         x, indices = self.encoder(x)
         x = self.decoder(x, indices)
         x = self.project(x)
