@@ -4,3 +4,5 @@ numpy
 einops
 matplotlib
 pycocotools
+tqdm
+tensorboard
