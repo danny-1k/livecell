@@ -121,7 +121,7 @@ class LiveCellDataset(Dataset):
             mask = rearrange(mask, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=self.patch_size[0], p2=self.patch_size[1])
 
             img = torch.from_numpy(img)
-            mask = torch.from_numpy(img)
+            mask = torch.from_numpy(mask)
 
             img = self.transform(img)
 
