@@ -6,25 +6,25 @@ import torch
 from torch import optim
 from torch import nn
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
-from models import SegNet, Unet
-from data import LiveCellDataset
 
 from averager import Averager
 
 from metrics import Metric
 
-def setup():
+from tqdm import tqdm
+
+def setup(dir):
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_name = f"../runs/run_{timestamp}"
-    save_dir = f"../checkpoints/{timestamp}"
+    run_name = f"{dir}/runs/run_{timestamp}"
+    save_dir = f"{dir}/checkpoints/{timestamp}"
 
-    if not os.path.exists("../runs"):
-        os.makedirs("../runs")
+    if not os.path.exists(f"{dir}/runs"):
+        os.makedirs(f"{dir}/runs")
 
-    if not os.path.exists("../checkpoints"):
-        os.makedirs("../checkpoints")
+    if not os.path.exists(f"{dir}/checkpoints"):
+        os.makedirs(f"{dir}/checkpoints")
 
     os.makedirs(run_name)
     os.makedirs(save_dir)
@@ -38,8 +38,9 @@ class Trainer:
                 net:nn.Module, 
                 optimiser, 
                 lossfn:nn.Module, 
-                use_tensorboard:bool, 
+                # use_tensorboard:bool, 
                 device:str,
+                dir:str,
                 metrics:list[Metric]) -> None:
         
         self.metrics = metrics
@@ -47,8 +48,10 @@ class Trainer:
         self.net = net
         self.optimiser = optimiser(self.net)
         self.lossfn = lossfn
-        self.use_tensorboard = use_tensorboard
+        # self.use_tensorboard = use_tensorboard
         self.device = device
+
+        self.run_name, self.save_dir = setup(dir)
 
         self.history = {}
 
@@ -58,7 +61,7 @@ class Trainer:
         loss_averager = Averager()
         metrics_averager = [metric.new() for metric in self.metrics]
 
-        for x, y in data:
+        for x, y in tqdm(data):
             x = x.to(self.device)
             y = y.to(self.device)
 
@@ -83,84 +86,122 @@ class Trainer:
             loss_averager += loss.item()
             
             for m in metrics_averager:
-                m += m.eval(p, y)
+                m += m.eval(p.argmax(dim=1), y)
 
         return loss_averager, metrics_averager
 
-    def test_one_epoch(self):
+    def test_one_epoch(self, data):
         self.net.eval()
-        pass
 
+        loss_averager = Averager()
+        metrics_averager = [metric.new() for metric in self.metrics]
+
+        for x, y in tqdm(data):
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            # x of shape (N, n, h, w)
+            # y of shape (N, n, h, w) -> (N, h, w)
+
+            x = x.view(-1, x.shape[-2], x.shape[-1])
+            y = y.view(-1, y.shape[-2], y.shape[-1])
+
+            p = net(x)
+
+            loss = self.lossfn(p.permute(0, 2, 3, 1).view(-1, p.shape[1]), y.view(-1))
+
+            loss_averager += loss.item()
+            
+            for m in metrics_averager:
+                m += m.eval(p.argmax(dim=1), y)
+
+        return loss_averager, metrics_averager
+    
     def run(self, train, test):
         self.net.to(self.device)
-        train_loss,_averager, test_metrics_averager = self.train_one_epoch(train)
 
-    def save(self):
-        # save model checkpoint
-        # save optimiser checkpoint
+        lowest_loss = None
 
-        pass
+        for epoch in range(self.num_epochs):
+            train_loss_averager, train_metrics_averager = self.train_one_epoch(train)
+            test_loss_averager, test_metrics_averager = self.test_one_epoch(test)
 
-lr = 1e-4
+            if not lowest_loss or test_loss_averager.value < lowest_loss:
+                lowest_loss = test_loss_averager.value
 
-patch_size = (64, 64)
-batch_size = 1
-epochs = 100
+                checkpoint = {
+                    "epoch": epoch+1,
+                    "checkpoint": self.net.state_dict(),
+                    "optimiser": self.optimiser.state_dict(),
+                    "train_loss": train_loss_averager.value,
+                    "test_loss": test_loss_averager.value,
+                }
 
-net = SegNet(
-    in_channels=1,
-    out_channels=16,
-    channel_expansion=2,
-    num_blocks=3,
-    num_classes=3,
-)
+                for metric in train_metrics_averager:
+                    checkpoint[f"train_{metric.name}"] = metric.value
 
-train = LiveCellDataset(split="train", patch_size=patch_size)
-test = LiveCellDataset(split="test", patch_size=patch_size)
+                for metric in test_metrics_averager:
+                    checkpoint[f"test_{metric.name}"] = metric.value
 
-train = DataLoader(train, batch_size=batch_size, shuffle=True)
-test = DataLoader(test, batch_size=batch_size, shuffle=True)
+                torch.save(checkpoint, f"{self.save_dir}/checkpoint.pt")
 
-lossfn = nn.CrossEntropyLoss()
-
-optimiser =  lambda net: optim.Adam(net.parameters(), lr=lr)
+            print(f"EPOCH: {epoch} | TRAIN_LOSS: {train_loss_averager.value:.3f} {' '.join([f'| TRAIN_{metric.name}: {metric.value}' for metric in train_metrics_averager])} TEST_LOSS: {test_loss_averager.value:.3f} {' '.join([f'| TEST_{metric.name}: {metric.value}' for metric in test_metrics_averager])}")
 
 
-trainer = Trainer(num_epochs=1, net=net, optimiser=optimiser, lossfn=lossfn, use_tensorboard=False, device="cpu", metrics=[])
+if __name__ == "__main__":
 
-trainer.run(train, test)
+    from argparse import ArgumentParser
 
-# for epoch in range(epochs):
-#     net.train()
-#     for x, y in train:
-#         optimiser.zero_grad()
+    from torch.utils.data import DataLoader
+    from metrics import IOU, DICE
 
-#         # x of shape (N, n, h, w)
-#         # y of shape (N, n, h, w) -> (N, h, w)
+    from models import SegNet, Unet
+    from data import LiveCellDataset
 
-#         x = x.view(-1, x.shape[-2], x.shape[-1])
-#         y = y.view(-1, y.shape[-2], y.shape[-1])
+    parser = ArgumentParser()
 
-#         p = net(x)
-        
-#         # p of shape (N, C, h, w) -> (N, C)
-#         # y of shape (N, h, w) -> (N)
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--dir", type=str, default="..")
 
-#         loss = lossfn(p.permute(0, 2, 3, 1).view(-1, p.shape[1]), y.view(-1))
+    parser.add_argument("--out_channels", type=int, default=16)
+    parser.add_argument("--expansion", type=int, default=2)
+    parser.add_argument("--blocks", type=int, default=3)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--batch_size", type=int, default=3) # NOTE: Images are split into patches and total batch size is N * number of patches
+    parser.add_argument("--model", type=str, default="segnet")
+    parser.add_argument("--patch_size", type=int, default=128)
 
-#         loss.backward()
+    args = parser.parse_args()
 
-#         optimiser.step()
+    if args.model == "segnet":
+        net = SegNet(
+            in_channels=1,
+            out_channels=args.out_channels,
+            channel_expansion=args.expansion,
+            num_blocks=args.blocks,
+            num_classes=3,
+        )
 
-#     net.eval()
+    else:
+        net = Unet()
 
-#     for x,y in test:
-#         optimiser.zero_grad()
+    optimiser = optim.Adam(net.parameters(), lr=args.lr)
+    
+    trainer = Trainer(
+        num_epochs=args.epochs,
+        net=net,
+        optimiser=optimiser,
+        lossfn=nn.CrossEntropyLoss(),
+        device=args.device,
+        dir=args.dir,
+        metrics=[IOU, DICE]
+    )
 
-#         x = x.view(-1, x.shape[-2], x.shape[-1])
-#         y = y.view(-1, y.shape[-2], y.shape[-1])
+    train = LiveCellDataset(split="train", patch_size=(args.patch_size, args.patch_size))
+    test = LiveCellDataset(split="test", patch_size=(args.patch_size, args.patch_size))
 
-#         p = net(x)
+    train = DataLoader(train, batch_size=args.batch_size, shuffle=True)
+    test = DataLoader(test, batch_size=args.batch_size, shuffle=True)
 
-#         loss = lossfn(p.permute(0, 2, 3, 1).view(-1, p.shape[1]), y.view(-1))
-
+    trainer.run(train, test)
