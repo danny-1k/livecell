@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 import torch
@@ -41,7 +41,8 @@ class Trainer:
                 # use_tensorboard:bool, 
                 device:str,
                 dir:str,
-                metrics:list[Metric]) -> None:
+                metrics:list[Metric],
+                checkpoint:Optional[str]=None) -> None:
         
         self.metrics = metrics
         self.num_epochs = num_epochs
@@ -54,6 +55,20 @@ class Trainer:
         self.run_name, self.save_dir = setup(dir)
 
         self.history = {}
+
+        if checkpoint:
+            try:
+                checkpoint = torch.load(checkpoint, map_location=self.net.device)
+                self.net.load_state_dict(checkpoint["checkpoint"])
+                self.optimiser.load_state_dict(checkpoint["optimiser"])
+                
+                print("Successfully Loaded Checkpoint")
+                print(f"\t\t Epoch -> {checkpoint['epoch']}")
+                print(f"\t\t Train Loss -> {checkpoint['train_loss']}")
+                print(f"\t\t Test Loss -> {checkpoint['test loss']}")
+
+            except:
+                print("Could load load checkpoint...")
 
     def train_one_epoch(self, data):
         self.net.train()
@@ -76,8 +91,6 @@ class Trainer:
             p = net(x)
 
             loss = self.lossfn(p.permute(0, 2, 3, 1).view(-1, p.shape[1]), y.view(-1))
-
-            print(loss.item())
 
             loss.backward()
 
@@ -171,6 +184,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=3) # NOTE: Images are split into patches and total batch size is N * number of patches
     parser.add_argument("--model", type=str, default="segnet")
     parser.add_argument("--patch_size", type=int, default=128)
+    parser.add_argument("--resume", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -195,7 +209,8 @@ if __name__ == "__main__":
         lossfn=nn.CrossEntropyLoss(),
         device=args.device,
         dir=args.dir,
-        metrics=[IOU, DICE]
+        metrics=[IOU, DICE],
+        checkpoint=args.resume
     )
 
     train = LiveCellDataset(split="train", patch_size=(args.patch_size, args.patch_size))
