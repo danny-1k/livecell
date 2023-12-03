@@ -20,7 +20,7 @@ class Metric:
 
 
 class DICE(Metric):
-    def __init__(self, classes) -> None:
+    def __init__(self, classes=3) -> None:
         super().__init__()
 
         self.name = "DICE"
@@ -48,7 +48,7 @@ class DICE(Metric):
 
 
 class IOU(Metric):
-    def __init__(self, classes) -> None:
+    def __init__(self, classes=3) -> None:
         super().__init__()
         
         self.name = "IOU"
