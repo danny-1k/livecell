@@ -23,8 +23,8 @@ class LiveCellDataset(Dataset):
         self.patch_size = patch_size
 
         self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=(127.5), std=(127.5)) # (x-127.5)/127.5 -> x E [-1, 1]
+            lambda x: torch.from_numpy(x), #transforms.ToTensor(),
+            lambda x: (x-127.5)/127.5 # -> x E [-1, 1]
         ])
 
     def __len__(self) -> int:
@@ -121,8 +121,9 @@ class LiveCellDataset(Dataset):
             img = rearrange(img, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=self.patch_size[0], p2=self.patch_size[1])
             mask = rearrange(mask, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=self.patch_size[0], p2=self.patch_size[1])
 
-            img = self.transform(img)
-            mask = torch.from_numpy(mask)
+            img = self.transform(np.asarray(img)).float()
+            img = img.unsqueeze(1)
+            mask = torch.from_numpy(mask).long()
 
         return img, mask
 
