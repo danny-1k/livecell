@@ -58,7 +58,7 @@ class Trainer:
 
         if checkpoint:
             try:
-                checkpoint = torch.load(checkpoint, map_location=self.net.device)
+                checkpoint = torch.load(checkpoint, map_location=next(self.net.parameters()).device)
                 self.net.load_state_dict(checkpoint["checkpoint"])
                 self.optimiser.load_state_dict(checkpoint["optimiser"])
                 
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("--resume", type=str, default=None)
 
     args = parser.parse_args()
-
+    
     if args.model == "segnet":
         net = SegNet(
             in_channels=1,
