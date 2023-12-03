@@ -9,6 +9,7 @@ class Metric:
 
     def __iadd__(self, value:float) -> None:
         self.value = .9*value + .1*self.value
+        return self
     
     @torch.no_grad()
     def eval(p:torch.Tensor, y:torch.Tensor) -> float:
