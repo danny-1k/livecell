@@ -90,7 +90,7 @@ class Trainer:
 
             p = net(x)
 
-            loss = self.lossfn(p.permute(0, 2, 3, 1).view(-1, p.shape[1]), y.view(-1))
+            loss = self.lossfn(p.permute(0, 2, 3, 1).contiguous().view(-1, p.shape[1]), y.view(-1))
 
             loss.backward()
 
@@ -121,7 +121,7 @@ class Trainer:
 
             p = net(x)
 
-            loss = self.lossfn(p.permute(0, 2, 3, 1).view(-1, p.shape[1]), y.view(-1))
+            loss = self.lossfn(p.permute(0, 2, 3, 1).contiguous().view(-1, p.shape[1]), y.view(-1))
 
             loss_averager += loss.item()
             
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     else:
         net = Unet()
 
-    optimiser = optim.Adam(net.parameters(), lr=args.lr)
+    optimiser = lambda net: optim.Adam(net.parameters(), lr=args.lr)
     
     trainer = Trainer(
         num_epochs=args.epochs,
