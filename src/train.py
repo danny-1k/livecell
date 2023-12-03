@@ -65,7 +65,7 @@ class Trainer:
                 print("Successfully Loaded Checkpoint")
                 print(f"\t\t Epoch -> {checkpoint['epoch']}")
                 print(f"\t\t Train Loss -> {checkpoint['train_loss']}")
-                print(f"\t\t Test Loss -> {checkpoint['test loss']}")
+                print(f"\t\t Test Loss -> {checkpoint['test_loss']}")
 
             except:
                 print("Could load load checkpoint...")
