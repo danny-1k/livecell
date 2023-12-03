@@ -7,7 +7,7 @@ from torch import optim
 from torch import nn
 from torch.utils.data import DataLoader
 # from torch.utils.tensorboard import SummaryWriter
-
+from utils import optimizer_to
 
 from averager import Averager
 
@@ -132,7 +132,7 @@ class Trainer:
     
     def run(self, train, test):
         self.net.to(self.device)
-        self.optimiser.to(self.device)
+        optimizer_to(self.optimiser, self.device)
 
         lowest_loss = None
 
