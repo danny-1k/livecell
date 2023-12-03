@@ -85,7 +85,7 @@ class Trainer:
             # x of shape (N, n, h, w)
             # y of shape (N, n, h, w) -> (N, h, w)
 
-            x = x.view(-1, x.shape[-2], x.shape[-1])
+            x = x.view(-1, x.shape[-3], x.shape[-2], x.shape[-1])
             y = y.view(-1, y.shape[-2], y.shape[-1])
 
             p = net(x)
@@ -116,7 +116,7 @@ class Trainer:
             # x of shape (N, n, h, w)
             # y of shape (N, n, h, w) -> (N, h, w)
 
-            x = x.view(-1, x.shape[-2], x.shape[-1])
+            x = x.view(-1, x.shape[-3], x.shape[-2], x.shape[-1])
             y = y.view(-1, y.shape[-2], y.shape[-1])
 
             p = net(x)
