@@ -132,6 +132,7 @@ class Trainer:
     
     def run(self, train, test):
         self.net.to(self.device)
+        self.optimiser.to(self.device)
 
         lowest_loss = None
 
