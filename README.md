@@ -1,4 +1,4 @@
-## *very minal effort* Segnet and Unet for Cell segmentation (Livecell dataset)
+## *very minimal effort* Segnet and Unet for Cell segmentation (Livecell dataset)
 
 ## Method
 The cell images and segmentation masks are splitted into small patches (both for generalisation and resource efficiency).
