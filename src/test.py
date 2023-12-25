@@ -1,3 +1,4 @@
+import os
 import math
 import torch
 from torchvision.transforms import transforms
@@ -7,6 +8,8 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 import numpy as np
+
+import cv2 as cv
 
 
 def to_patches(img, patch_size):
@@ -74,75 +77,120 @@ def to_patches(img, patch_size):
 
             padding[1] = (0, p)
 
-        
-    return img, padding
+
+    num_vertical = img.shape[0] // patch_size[0]
+    num_horizontal = img.shape[1] // patch_size[1]
+
+    out = np.zeros((num_vertical*num_horizontal, patch_size[0], patch_size[1]))
+
+    for i in range(num_vertical):
+        for j in range(num_horizontal):
+            out[i*num_horizontal + j] = img[i*patch_size[0]: i*patch_size[0] + patch_size[0], j*patch_size[1]: j*patch_size[1] + patch_size[1]]
+
+    return out, padding
 
 
-checkpoint_f = "../checkpoints/checkpoint.pt"
-test_img = "../data/imgs/images/livecell_test_images/A172_Phase_C7_1_00d00h00m_1.tif"
+def stitch_patches(patch_size, img_size, padding, patches):
+    vertical_padding, horizontal_padding = padding
 
-checkpoint = torch.load(checkpoint_f, map_location=torch.device("cpu"))
+    new_img_size = (img_size[0] + sum(vertical_padding), img_size[1] + sum(horizontal_padding))
+    
+    num_vertical = new_img_size[0] // patch_size[0]
+    num_horizontal = new_img_size[1] // patch_size[1]
+    
+    out_img = np.zeros(new_img_size)
 
-print(f"Loading checkpoint from Epoch {checkpoint['epoch']} with train IOU {checkpoint['train_IOU'] :.3f} test IOU {checkpoint['test_IOU']:.3f} train DICE {checkpoint['train_DICE']:.3f} test DICE {checkpoint['test_DICE']:.3f}")
+    for i in range(num_vertical):
+        for j in range(num_horizontal):
+            out_img[i*patch_size[0]: i*patch_size[0] + patch_size[0], j*patch_size[1]: j*patch_size[1] + patch_size[1]] = patches[i*num_horizontal + j]
 
-out_channels = 16
-expansion = 2
-blocks = 3
-patch_size = 128
+    # strip padding
+    out_img = out_img[vertical_padding[0]:-vertical_padding[1], horizontal_padding[0]:-horizontal_padding[1]]
 
-
-net = SegNet(
-    in_channels=1,
-    out_channels=out_channels,
-    channel_expansion=expansion,
-    num_blocks=blocks,
-    num_classes=3
-)
-net.eval()
-net.load_state_dict(checkpoint["checkpoint"])
-
-# img = rearrange(img, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=patch_size[0], p2=patch_size[1])
-#             mask = rearrange(mask, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=patch_size[0], p2=patch_size[1])
-
-img = np.asarray(Image.open(test_img).convert("L"))
-img_size = img.shape
-img, padding = to_patches(img, patch_size=(patch_size, patch_size))
-img = rearrange(img, "(n1 p1) (n2 p2) -> (n1 n2) p1 p2", p1=patch_size, p2=patch_size)
-
-transform = transforms.Compose([
-            lambda x: torch.from_numpy(x), #transforms.ToTensor(),
-            lambda x: (x-127.5)/127.5 # -> x E [-1, 1]
-        ])
+    return out_img
 
 
-img = transform(img)
-img = img.unsqueeze(1).float()
+#https://www.kaggle.com/code/purplejester/showing-samples-with-segmentation-mask-overlay
+def overlay_mask(img, mask, color, alpha):
+    img = np.expand_dims(img, 0).repeat(3, axis=0) # make it 3 channels
 
-p = net(img)
+    color = np.array(color).reshape(3, 1, 1)
+    colored_mask = np.expand_dims(mask, 0).repeat(3, axis=0)
+    masked = np.ma.MaskedArray(img, mask=colored_mask, fill_value=color)
+    image_overlay = masked.filled()
 
-p = p.argmax(1)
+    image_combined = cv.addWeighted(img, 1-alpha, image_overlay, alpha, 0)
 
-# p of shape (n, p1, p2) -> (p1 * (h/p1), p2 * (w/p2))
+    return image_combined
 
-print(p.shape)
 
-p = p.detach().numpy()
+if __name__ == "__main__":
+    from argparse import ArgumentParser
 
-# break paddings off
+    parser = ArgumentParser()
+    
+    parser.add_argument("--f", required=True)
+    parser.add_argument("--checkpoint", default="../checkpoints/checkpoint.pt")
+    
+    parser.add_argument("--expansion", default=2, type=int)
+    parser.add_argument("--num_blocks", default=3, type=int)
+    parser.add_argument("--out_channels", default=16, type=int)
+    parser.add_argument("--patch_size", default=128, type=int)
+    parser.add_argument("--pred_dir", default="../pred", type=str)
+    
+    args = parser.parse_args()
 
-vertical_padding, horizontal_padding = padding
+    test_img_f = args.f
+    checkpoint_f = args.checkpoint
+    expansion = args.expansion
+    num_blocks = args.num_blocks
+    out_channels = args.out_channels
+    patch_size = (args.patch_size, args.patch_size)
+    pred_dir = args.pred_dir
 
-print(img_size, "img size")
+    if not os.path.exists(args.pred_dir):
+        os.makedirs(args.pred_dir)
 
-new_size = (img_size[0] + sum(vertical_padding), img_size[1] + sum(horizontal_padding))
+    checkpoint = torch.load(checkpoint_f, map_location=torch.device("cpu"))
 
-print(new_size)
-p = p.reshape(((new_size[0]//128)*128), -1)
+    print(f"Loading checkpoint from Epoch {checkpoint['epoch']} with train IOU {checkpoint['train_IOU'] :.3f} test IOU {checkpoint['test_IOU']:.3f} train DICE {checkpoint['train_DICE']:.3f} test DICE {checkpoint['test_DICE']:.3f}")
 
-# img = rearrange(p, "(n1 n2) p1 p2 -> (n1 p1) (n2 p2)", p1=128, p2=128, n1=15, n2=2)
+    net = SegNet(
+        in_channels=1,
+        out_channels=out_channels,
+        channel_expansion=expansion,
+        num_blocks=num_blocks,
+        num_classes=3
+    )
+    
+    net.eval()
+    net.load_state_dict(checkpoint["checkpoint"])
 
-print(p.shape)
-plt.imshow(p)
-plt.show()
+    img = np.asarray(Image.open(test_img_f).convert("L"))
 
-# print(img.shape)
+    pre_img = img.copy()
+    img_size = img.shape
+    img, padding = to_patches(img, patch_size=patch_size)
+
+    transform = transforms.Compose([
+        lambda x: torch.from_numpy(x), #transforms.ToTensor(),
+        lambda x: (x-127.5)/127.5 # -> x E [-1, 1]
+    ])
+
+    img = transform(img)
+    img = img.unsqueeze(1).float()
+
+    patches = net(img).argmax(1).detach().numpy()
+
+    mask = stitch_patches(patch_size=patch_size, img_size=img_size, padding=padding, patches=patches)
+    mask = (mask != 0)
+
+    overlayed_img = overlay_mask(pre_img, mask, color=(255, 0, 0), alpha=.3)
+
+    prediction_filename = test_img_f.replace("\\", "/").split("/")[-1].split(".")[0]
+    prediction_filename = f"{prediction_filename}.png"
+    
+    cv.imwrite(os.path.join(pred_dir, prediction_filename), overlayed_img.transpose(1, 2, 0))
+
+    plt.imshow(overlayed_img.transpose(1, 2, 0))
+    plt.show()
